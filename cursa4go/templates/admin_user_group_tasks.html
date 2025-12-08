@@ -519,30 +519,55 @@
     }
 
     async function loadNotes() {
-      try {
-        const res = await fetch(`/admin/tasks/${currentTaskId}/notes`);
-        const notes = await res.json();
+  try {
+    const res = await fetch(`/admin/tasks/${currentTaskId}/notes`);
+    const notes = await res.json();
 
-        const notesList = document.getElementById('notesList');
-        if (!notes || notes.length === 0) {
-          notesList.innerHTML = '<p style="color:#999;text-align:center;padding:20px;">📭 Заметок пока нет</p>';
-          return;
-        }
-
-        notesList.innerHTML = notes.map(note => `
-          <div class="note-item">
-            <div class="note-header">
-              <span class="note-author">${note.User?.Username || note.User?.username || 'Пользователь'}</span>
-              <span class="note-date">${new Date(note.CreatedAt || note.created_at).toLocaleString('ru-RU')}</span>
-            </div>
-            <div class="note-content">${note.Content || note.content}</div>
-          </div>
-        `).join('');
-      } catch (e) {
-        console.error('Ошибка загрузки заметок:', e);
-        document.getElementById('notesList').innerHTML = '<p style="color:red;">❌ Ошибка загрузки заметок</p>';
-      }
+    const notesList = document.getElementById('notesList');
+    if (!notes || notes.length === 0) {
+      notesList.innerHTML = '<p style="color:#999;text-align:center;padding:20px;">📭 Заметок пока нет</p>';
+      return;
     }
+
+    notesList.innerHTML = notes.map(note => {
+      // ✅ Получаем имя пользователя из разных возможных полей
+      const username = note.user?.username || note.User?.username || note.User?.Username || 'Неизвестный';
+      
+      // ✅ Получаем роль пользователя (если есть)
+      const isAdmin = note.user?.role === 'admin' || note.User?.role === 'admin' || note.User?.Role === 'admin';
+      
+      // ✅ Форматируем дату
+      const dateStr = note.created_at || note.CreatedAt;
+      const date = dateStr ? new Date(dateStr).toLocaleString('ru-RU', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }) : 'Неизвестно';
+
+      // ✅ Получаем контент заметки
+      const content = note.content || note.Content || '';
+
+      return `
+        <div class="note-item">
+          <div class="note-header">
+            <span class="note-author">
+              👤 ${username}
+              ${isAdmin ? '<span style="background:#dc3545;color:white;padding:2px 6px;border-radius:3px;font-size:10px;margin-left:5px;">ADMIN</span>' : ''}
+            </span>
+            <span class="note-date">🕐 ${date}</span>
+          </div>
+          <div class="note-content">${content}</div>
+        </div>
+      `;
+    }).join('');
+  } catch (e) {
+    console.error('Ошибка загрузки заметок:', e);
+    document.getElementById('notesList').innerHTML = '<p style="color:red;">❌ Ошибка загрузки заметок</p>';
+  }
+}
+
 
     async function addNote() {
       const content = document.getElementById('newNoteContent').value.trim();

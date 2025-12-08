@@ -107,7 +107,7 @@ func Dashboard(c *gin.Context) {
 	})
 }
 
-// Получить задачи текущего пользователя
+// ✅ ИСПРАВЛЕНО: Получить задачи текущего пользователя + групповые задачи
 func GetTasks(c *gin.Context) {
 	user := middleware.GetCurrentUser(c)
 	if user == nil {
@@ -115,13 +115,33 @@ func GetTasks(c *gin.Context) {
 		return
 	}
 
+	// 1. Получить ID групп, в которых состоит пользователь
+	var userGroups []models.Group
+	config.DB.Joins("JOIN user_groups ON user_groups.group_id = groups.id").
+		Where("user_groups.user_id = ?", user.ID).
+		Find(&userGroups)
+	
+	groupIDs := []uint{}
+	for _, g := range userGroups {
+		groupIDs = append(groupIDs, g.ID)
+	}
+	
 	var tasks []models.Task
-	config.DB.Where("user_id = ?", user.ID).Find(&tasks)
-
+	
+	// 2. Начинаем с индивидуальных задач пользователя (без группы)
+	query := config.DB.Where("user_id = ? AND (group_id IS NULL OR group_id = 0)", user.ID)
+	
+	// 3. Добавляем групповые задачи (общие для группы + индивидуальные в группе)
+	if len(groupIDs) > 0 {
+		query = query.Or("(group_id IN (?) AND (user_id = ? OR user_id IS NULL))", groupIDs, user.ID)
+	}
+	
+	query.Order("created_at DESC").Preload("User").Preload("Group").Find(&tasks)
+	
 	c.JSON(http.StatusOK, tasks)
 }
 
-// 🆕 Получить детали задачи
+// ✅ ИСПРАВЛЕНО: Получить детали задачи (с учётом групповых задач)
 func GetTaskDetails(c *gin.Context) {
 	user := middleware.GetCurrentUser(c)
 	if user == nil {
@@ -132,16 +152,35 @@ func GetTaskDetails(c *gin.Context) {
 	taskID := c.Param("id")
 
 	var task models.Task
-	query := config.DB.Where("id = ?", taskID)
-
+	
 	// Админ может видеть любую задачу
-	if user.Role != "admin" {
-		query = query.Where("user_id = ?", user.ID)
-	}
-
-	if err := query.Preload("User").First(&task).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
-		return
+	if user.Role == "admin" {
+		if err := config.DB.Where("id = ?", taskID).Preload("User").Preload("Group").First(&task).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+			return
+		}
+	} else {
+		// Получить ID групп пользователя
+		var userGroups []models.Group
+		config.DB.Joins("JOIN user_groups ON user_groups.group_id = groups.id").
+			Where("user_groups.user_id = ?", user.ID).
+			Find(&userGroups)
+		
+		groupIDs := []uint{}
+		for _, g := range userGroups {
+			groupIDs = append(groupIDs, g.ID)
+		}
+		
+		// Проверяем доступ: задача принадлежит пользователю ИЛИ его группе
+		query := config.DB.Where("id = ?", taskID).Where(
+			config.DB.Where("user_id = ?", user.ID).
+				Or("(group_id IN (?) AND (user_id = ? OR user_id IS NULL))", groupIDs, user.ID),
+		)
+		
+		if err := query.Preload("User").Preload("Group").First(&task).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Task not found or access denied"})
+			return
+		}
 	}
 
 	// Загружаем заметки
@@ -181,10 +220,9 @@ func CreateTask(c *gin.Context) {
 	task := models.Task{
 		Title:       input.Title,
 		Description: input.Description,
-		Status:      "todo",
-		UserID:      &userID,  // ← ВЗЯТЬ АДРЕС
+		Status:      input.Status,
+		UserID:      &userID,
 	}
-
 
 	if err := config.DB.Create(&task).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create task"})
@@ -194,7 +232,7 @@ func CreateTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Task created", "task": task})
 }
 
-// Обновить задачу
+// ✅ ИСПРАВЛЕНО: Обновить задачу (с учётом групповых задач)
 func UpdateTask(c *gin.Context) {
 	user := middleware.GetCurrentUser(c)
 	if user == nil {
@@ -205,15 +243,35 @@ func UpdateTask(c *gin.Context) {
 	taskID := c.Param("id")
 
 	var task models.Task
-	query := config.DB.Where("id = ?", taskID)
-
-	if user.Role != "admin" {
-		query = query.Where("user_id = ?", user.ID)
-	}
-
-	if err := query.First(&task).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found or access denied"})
-		return
+	
+	// Админ может обновлять любую задачу
+	if user.Role == "admin" {
+		if err := config.DB.Where("id = ?", taskID).First(&task).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+			return
+		}
+	} else {
+		// Получить ID групп пользователя
+		var userGroups []models.Group
+		config.DB.Joins("JOIN user_groups ON user_groups.group_id = groups.id").
+			Where("user_groups.user_id = ?", user.ID).
+			Find(&userGroups)
+		
+		groupIDs := []uint{}
+		for _, g := range userGroups {
+			groupIDs = append(groupIDs, g.ID)
+		}
+		
+		// Проверяем доступ
+		query := config.DB.Where("id = ?", taskID).Where(
+			config.DB.Where("user_id = ?", user.ID).
+				Or("(group_id IN (?) AND (user_id = ? OR user_id IS NULL))", groupIDs, user.ID),
+		)
+		
+		if err := query.First(&task).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Task not found or access denied"})
+			return
+		}
 	}
 
 	var input struct {
@@ -227,12 +285,13 @@ func UpdateTask(c *gin.Context) {
 		return
 	}
 
-	// 🟢 Пользователь может менять только статус задач от админа
-	if user.Role != "admin" && task.CreatedByAdmin {
+	// 🟢 Пользователь может менять только статус задач от админа или групповых задач
+	if user.Role != "admin" && (task.CreatedByAdmin || task.GroupID != nil) {
 		if input.Status != "" {
 			task.Status = input.Status
 		}
 	} else {
+		// Полное редактирование для своих задач или если админ
 		if input.Title != "" {
 			task.Title = input.Title
 		}
@@ -252,7 +311,7 @@ func UpdateTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Task updated", "task": task})
 }
 
-// Удалить задачу
+// ✅ ИСПРАВЛЕНО: Удалить задачу (с учётом групповых задач)
 func DeleteTask(c *gin.Context) {
 	user := middleware.GetCurrentUser(c)
 	if user == nil {
@@ -263,15 +322,19 @@ func DeleteTask(c *gin.Context) {
 	taskID := c.Param("id")
 
 	var task models.Task
-	query := config.DB.Where("id = ?", taskID)
-
-	if user.Role != "admin" {
-		query = query.Where("user_id = ?", user.ID)
-	}
-
-	if err := query.First(&task).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found or access denied"})
-		return
+	
+	// Админ может удалять любую задачу
+	if user.Role == "admin" {
+		if err := config.DB.Where("id = ?", taskID).First(&task).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+			return
+		}
+	} else {
+		// Пользователь может удалять ТОЛЬКО свои индивидуальные задачи
+		if err := config.DB.Where("id = ? AND user_id = ? AND (group_id IS NULL OR group_id = 0)", taskID, user.ID).First(&task).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Task not found or access denied"})
+			return
+		}
 	}
 
 	// Удаляем связанные заметки
@@ -287,7 +350,7 @@ func DeleteTask(c *gin.Context) {
 
 // ========== ЗАМЕТКИ ==========
 
-// Добавить заметку к задаче
+// ✅ ИСПРАВЛЕНО: Добавить заметку к задаче (с учётом групповых задач)
 func AddNote(c *gin.Context) {
 	user := middleware.GetCurrentUser(c)
 	if user == nil {
@@ -306,16 +369,35 @@ func AddNote(c *gin.Context) {
 	}
 
 	var task models.Task
-	query := config.DB.Where("id = ?", taskID)
-
-	// 🟢 Админ может добавлять заметки к любой задаче
-	if user.Role != "admin" {
-		query = query.Where("user_id = ?", user.ID)
-	}
-
-	if err := query.First(&task).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found or access denied"})
-		return
+	
+	// Админ может добавлять заметки к любой задаче
+	if user.Role == "admin" {
+		if err := config.DB.Where("id = ?", taskID).First(&task).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+			return
+		}
+	} else {
+		// Получить ID групп пользователя
+		var userGroups []models.Group
+		config.DB.Joins("JOIN user_groups ON user_groups.group_id = groups.id").
+			Where("user_groups.user_id = ?", user.ID).
+			Find(&userGroups)
+		
+		groupIDs := []uint{}
+		for _, g := range userGroups {
+			groupIDs = append(groupIDs, g.ID)
+		}
+		
+		// Проверяем доступ к задаче
+		query := config.DB.Where("id = ?", taskID).Where(
+			config.DB.Where("user_id = ?", user.ID).
+				Or("(group_id IN (?) AND (user_id = ? OR user_id IS NULL))", groupIDs, user.ID),
+		)
+		
+		if err := query.First(&task).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Task not found or access denied"})
+			return
+		}
 	}
 
 	note := models.Note{
@@ -333,7 +415,8 @@ func AddNote(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Note added", "note": note})
 }
-// GetTaskNotes - получить заметки к задаче (админ и пользователь)
+
+// ✅ ИСПРАВЛЕНО: GetTaskNotes - получить заметки к задаче (с учётом групповых задач)
 func GetTaskNotes(c *gin.Context) {
 	user := middleware.GetCurrentUser(c)
 	if user == nil {
@@ -344,16 +427,35 @@ func GetTaskNotes(c *gin.Context) {
 	taskID := c.Param("id")
 
 	var task models.Task
-	query := config.DB.Where("id = ?", taskID)
-
+	
 	// Админ может видеть заметки любой задачи
-	if user.Role != "admin" {
-		query = query.Where("user_id = ?", user.ID)
-	}
-
-	if err := query.First(&task).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found or access denied"})
-		return
+	if user.Role == "admin" {
+		if err := config.DB.Where("id = ?", taskID).First(&task).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+			return
+		}
+	} else {
+		// Получить ID групп пользователя
+		var userGroups []models.Group
+		config.DB.Joins("JOIN user_groups ON user_groups.group_id = groups.id").
+			Where("user_groups.user_id = ?", user.ID).
+			Find(&userGroups)
+		
+		groupIDs := []uint{}
+		for _, g := range userGroups {
+			groupIDs = append(groupIDs, g.ID)
+		}
+		
+		// Проверяем доступ
+		query := config.DB.Where("id = ?", taskID).Where(
+			config.DB.Where("user_id = ?", user.ID).
+				Or("(group_id IN (?) AND (user_id = ? OR user_id IS NULL))", groupIDs, user.ID),
+		)
+		
+		if err := query.First(&task).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Task not found or access denied"})
+			return
+		}
 	}
 
 	// Загружаем заметки с информацией о пользователях

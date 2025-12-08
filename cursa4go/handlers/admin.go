@@ -9,9 +9,11 @@ import (
 	"net/http"
 	"strconv"
 
+
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 	"github.com/gin-contrib/sessions"
+	"gorm.io/gorm"
 )
 
 // ========================================
@@ -1070,15 +1072,25 @@ func AdminDeleteTask(c *gin.Context) {
 	taskTitle := task.Title
 	taskIDInt := task.ID
 
-	// Удаляем все заметки, связанные с задачей
-	if err := config.DB.Where("task_id = ?", taskID).Delete(&models.Note{}).Error; err != nil {
-		log.Printf("⚠️ Ошибка удаления заметок задачи %d: %v", task.ID, err)
-	}
+	// ✅ Используем транзакцию для атомарного удаления
+	err := config.DB.Transaction(func(tx *gorm.DB) error {
+		// 1. Удаляем все заметки
+		if err := tx.Where("task_id = ?", taskID).Delete(&models.Note{}).Error; err != nil {
+			log.Printf("❌ Ошибка удаления заметок задачи %d: %v", taskIDInt, err)
+			return fmt.Errorf("не удалось удалить заметки: %w", err)
+		}
 
-	// Удаляем саму задачу
-	if err := config.DB.Delete(&task).Error; err != nil {
-		log.Printf("❌ Ошибка удаления задачи %d: %v", task.ID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка удаления задачи"})
+		// 2. Удаляем задачу
+		if err := tx.Delete(&task).Error; err != nil {
+			log.Printf("❌ Ошибка удаления задачи %d: %v", taskIDInt, err)
+			return fmt.Errorf("не удалось удалить задачу: %w", err)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка удаления задачи: " + err.Error()})
 		return
 	}
 

@@ -32,7 +32,8 @@ type Task struct {
 	UpdatedAt      time.Time  `json:"updated_at"`
 	User           *User      `gorm:"foreignKey:UserID" json:"-"`
 	Group          *Group     `gorm:"foreignKey:GroupID" json:"-"`
-	Notes          []Note     `gorm:"foreignKey:TaskID" json:"notes,omitempty"`
+	Notes          []Note     `gorm:"foreignKey:TaskID;constraint:OnDelete:CASCADE" json:"notes,omitempty"`
+
 }
 // ✅ МОДЕЛЬ ЗАМЕТКИ
 type Note struct {

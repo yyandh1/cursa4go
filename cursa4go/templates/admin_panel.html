@@ -143,6 +143,35 @@
             font-size: 11px;
             margin-left: 5px;
         }
+
+        /* ✅ Дополнительные стили для улучшенного вида */
+        .username-cell {
+            font-weight: 500;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .date-cell {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .table-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .user-count {
+            color: #667eea;
+            font-weight: bold;
+            background: #f0f0f0;
+            padding: 5px 10px;
+            border-radius: 5px;
+        }
     </style>
 </head>
 <body>
@@ -158,11 +187,14 @@
         </div>
 
         <div class="users-table">
-            <h2 style="margin-bottom: 20px;">Все пользователи ({{len .users}})</h2>
+            <div class="table-header">
+                <h2>Все пользователи</h2>
+                <span class="user-count">Всего: {{len .users}}</span>
+            </div>
+            
             <table>
                 <thead>
                     <tr>
-                        <th>ID</th>
                         <th>Имя пользователя</th>
                         <th>Роль</th>
                         <th>Дата регистрации</th>
@@ -174,19 +206,20 @@
                     <tr data-user-id="{{.ID}}" 
                         data-username="{{.Username}}"
                         data-role="{{.Role}}">
-                        <td>{{.ID}}</td>
                         <td>
-                            {{.Username}}
-                            {{if eq .ID $.admin.ID}}
-                            <span class="self-badge">ВЫ</span>
-                            {{end}}
+                            <div class="username-cell">
+                                <span>{{.Username}}</span>
+                                {{if eq .ID $.admin.ID}}
+                                <span class="self-badge">ВЫ</span>
+                                {{end}}
+                            </div>
                         </td>
                         <td>
                             <span class="role-badge role-{{.Role}}">
                                 {{if eq .Role "admin"}}🛡️ Администратор{{else}}👤 Пользователь{{end}}
                             </span>
                         </td>
-                        <td>{{.CreatedAt.Format "02.01.2006 15:04"}}</td>
+                        <td class="date-cell">{{.CreatedAt.Format "02.01.2006 15:04"}}</td>
                         <td>
                             <div class="actions">
                                 {{if eq .Role "admin"}}
