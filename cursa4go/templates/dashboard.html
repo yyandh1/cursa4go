@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard — Business Desk</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      margin: 0;
+      padding: 0;
+    }
+    .header {
+      background: white;
+      padding: 20px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .btn {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      background: #667eea;
+      color: white;
+      text-decoration: none;
+    }
+    .btn-secondary { background: #6c757d; }
+    
+    .kanban-container {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      padding: 20px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .column {
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      min-height: 500px;
+      transition: background-color 0.3s;
+    }
+    .column.drag-over {
+      background: #f0f0ff;
+      border: 2px dashed #667eea;
+    }
+    .column-header {
+      font-size: 20px;
+      font-weight: bold;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 3px solid;
+    }
+    .column-todo .column-header { color: #ffc107; border-color: #ffc107; }
+    .column-in-progress .column-header { color: #007bff; border-color: #007bff; }
+    .column-done .column-header { color: #28a745; border-color: #28a745; }
+    
+    .task-card {
+      background: #f9f9f9;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      cursor: grab;
+      transition: transform 0.2s, box-shadow 0.2s;
+      border-left: 4px solid transparent;
+    }
+    .task-card:active {
+      cursor: grabbing;
+    }
+    .task-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .task-card.dragging {
+      opacity: 0.5;
+      cursor: grabbing;
+    }
+    .column-todo .task-card { border-left-color: #ffc107; }
+    .column-in-progress .task-card { border-left-color: #007bff; }
+    .column-done .task-card { border-left-color: #28a745; }
+    
+    .task-title {
+      font-weight: bold;
+      margin-bottom: 8px;
+      color: #333;
+    }
+    .task-description {
+      color: #666;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+    .task-actions {
+      display: flex;
+      gap: 5px;
+      margin-top: 10px;
+    }
+    .task-actions button {
+      flex: 1;
+      padding: 6px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .btn-edit { background: #ffc107; color: white; }
+    .btn-delete { background: #dc3545; color: white; }
+    .btn-notes { background: #17a2b8; color: white; }
+    
+    .task-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: bold;
+      margin-top: 5px;
+    }
+    .badge-admin { background: #ff6b6b; color: white; }
+    .badge-user { background: #51cf66; color: white; }
+    
+    .notes-count {
+      background: #17a2b8;
+      color: white;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-size: 11px;
+      margin-left: 5px;
+    }
+
+    .drag-hint {
+      text-align: center;
+      color: #999;
+      font-size: 12px;
+      margin-top: 10px;
+      padding: 8px;
+      background: #f0f0f0;
+      border-radius: 4px;
+    }
+
+    /* Modal */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    .modal.show {
+      display: flex;
+    }
+    .modal-content {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      width: 600px;
+      max-width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .close-btn {
+      background: none;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    .form-group input,
+    .form-group textarea,
+    .form-group select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+    .btn-primary {
+      background: #667eea;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    
+    .note-item {
+      background: #f9f9f9;
+      padding: 10px;
+      border-radius: 5px;
+      margin-bottom: 10px;
+      border-left: 3px solid #17a2b8;
+    }
+    .note-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 5px;
+    }
+    .note-author {
+      font-weight: bold;
+      color: #667eea;
+    }
+    .note-date {
+      font-size: 12px;
+      color: #999;
+    }
+    .note-content {
+      color: #333;
+    }
+
+    @media (max-width: 768px) {
+      .kanban-container {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h2 style="color:#667eea; margin:0;">👤 Привет, {{.username}}!</h2>
+      <small>Твоя персональная доска задач</small>
+    </div>
+    <div>
+      <button onclick="openCreateModal()" class="btn">➕ Новая задача</button>
+      <a href="/logout" class="btn btn-secondary">Выход</a>
+    </div>
+  </div>
+
+  <div class="kanban-container">
+    <!-- 📋 TO DO -->
+    <div class="column column-todo" data-status="todo">
+      <div class="column-header">📋 To Do</div>
+      <div class="drag-hint">🖱️ Перетащите сюда задачу</div>
+      <div id="todoColumn"></div>
+    </div>
+
+    <!-- ⚙️ IN PROGRESS -->
+    <div class="column column-in-progress" data-status="in_progress">
+      <div class="column-header">⚙️ In Progress</div>
+      <div class="drag-hint">🖱️ Перетащите сюда задачу</div>
+      <div id="inProgressColumn"></div>
+    </div>
+
+    <!-- ✅ DONE -->
+    <div class="column column-done" data-status="done">
+      <div class="column-header">✅ Done</div>
+      <div class="drag-hint">🖱️ Перетащите сюда задачу</div>
+      <div id="doneColumn"></div>
+    </div>
+  </div>
+
+  <!-- Modal для создания/редактирования задачи -->
+  <div id="taskModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modalTitle">➕ Новая задача</h2>
+        <button class="close-btn" onclick="closeModal()">&times;</button>
+      </div>
+      <form id="taskForm">
+        <input type="hidden" id="taskId">
+        <div class="form-group">
+          <label>Название</label>
+          <input type="text" id="taskTitle" required>
+        </div>
+        <div class="form-group">
+          <label>Описание</label>
+          <textarea id="taskDescription" rows="4"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Статус</label>
+          <select id="taskStatus">
+            <option value="todo">📋 To Do</option>
+            <option value="in_progress">⚙️ In Progress</option>
+            <option value="done">✅ Done</option>
+          </select>
+        </div>
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+          <button type="button" class="btn btn-secondary" onclick="closeModal()">Отмена</button>
+          <button type="submit" class="btn btn-primary">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal для заметок -->
+  <div id="notesModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>📝 Заметки к задаче</h2>
+        <button class="close-btn" onclick="closeNotesModal()">&times;</button>
+      </div>
+      <div id="notesList"></div>
+      <div class="form-group">
+        <label>Добавить заметку</label>
+        <textarea id="newNoteContent" rows="3" placeholder="Опишите прогресс работы..."></textarea>
+        <button onclick="addNote()" class="btn btn-primary" style="margin-top:10px;">Добавить</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let tasks = [];
+    let currentTaskId = null;
+    let draggedTask = null;
+
+    async function loadTasks() {
+      const res = await fetch('/api/tasks');
+      tasks = await res.json();
+      renderTasks();
+    }
+
+    function renderTasks() {
+      const todoColumn = document.getElementById('todoColumn');
+      const inProgressColumn = document.getElementById('inProgressColumn');
+      const doneColumn = document.getElementById('doneColumn');
+
+      todoColumn.innerHTML = '';
+      inProgressColumn.innerHTML = '';
+      doneColumn.innerHTML = '';
+
+      tasks.forEach(task => {
+        const card = createTaskCard(task);
+        if (task.status === 'todo') todoColumn.appendChild(card);
+        else if (task.status === 'in_progress') inProgressColumn.appendChild(card);
+        else if (task.status === 'done') doneColumn.appendChild(card);
+      });
+    }
+
+    function createTaskCard(task) {
+      const card = document.createElement('div');
+      card.className = 'task-card';
+      card.draggable = true;
+      card.dataset.id = task.id;
+      card.dataset.status = task.status;
+      
+      // 🟢 Drag events
+      card.addEventListener('dragstart', handleDragStart);
+      card.addEventListener('dragend', handleDragEnd);
+      
+      card.innerHTML = `
+        <div class="task-title">${task.title}</div>
+        <div class="task-description">${task.description || ''}</div>
+        ${task.created_by_admin ? 
+          '<span class="task-badge badge-admin">📌 От администратора</span>' : 
+          '<span class="task-badge badge-user">✏️ Моя задача</span>'
+        }
+        ${task.notes_count > 0 ? `<span class="notes-count">💬 ${task.notes_count}</span>` : ''}
+        <div class="task-actions">
+          <button class="btn-notes" onclick="event.stopPropagation(); openNotes(${task.id})">📝 Заметки</button>
+          ${!task.created_by_admin ? `
+            <button class="btn-edit" onclick="event.stopPropagation(); editTask(${task.id})">✏️</button>
+            <button class="btn-delete" onclick="event.stopPropagation(); deleteTask(${task.id})">🗑️</button>
+          ` : ''}
+        </div>
+      `;
+      return card;
+    }
+
+    // === DRAG AND DROP ===
+    function handleDragStart(e) {
+      draggedTask = this;
+      this.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/html', this.innerHTML);
+    }
+
+    function handleDragEnd(e) {
+      this.classList.remove('dragging');
+      document.querySelectorAll('.column').forEach(col => col.classList.remove('drag-over'));
+    }
+
+    // Setup drop zones
+    document.querySelectorAll('.column').forEach(column => {
+      column.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        this.classList.add('drag-over');
+      });
+
+      column.addEventListener('dragleave', function(e) {
+        this.classList.remove('drag-over');
+      });
+
+      column.addEventListener('drop', async function(e) {
+        e.preventDefault();
+        this.classList.remove('drag-over');
+        
+        if (!draggedTask) return;
+
+        const newStatus = this.dataset.status;
+        const taskId = draggedTask.dataset.id;
+        const oldStatus = draggedTask.dataset.status;
+
+        if (newStatus === oldStatus) return;
+
+        // Обновляем статус на сервере
+        const task = tasks.find(t => t.id == taskId);
+        if (!task) return;
+
+        const res = await fetch(`/api/tasks/${taskId}`, {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            title: task.title,
+            description: task.description,
+            status: newStatus
+          })
+        });
+
+        if (res.ok) {
+          loadTasks();
+        } else {
+          alert('❌ Ошибка при изменении статуса');
+        }
+      });
+    });
+
+    function openCreateModal() {
+      document.getElementById('modalTitle').textContent = '➕ Новая задача';
+      document.getElementById('taskForm').reset();
+      document.getElementById('taskId').value = '';
+      document.getElementById('taskModal').classList.add('show');
+    }
+
+    function editTask(id) {
+      const task = tasks.find(t => t.id === id);
+      if (!task) return;
+
+      document.getElementById('modalTitle').textContent = '✏️ Редактировать задачу';
+      document.getElementById('taskId').value = task.id;
+      document.getElementById('taskTitle').value = task.title;
+      document.getElementById('taskDescription').value = task.description || '';
+      document.getElementById('taskStatus').value = task.status;
+      document.getElementById('taskModal').classList.add('show');
+    }
+
+    function closeModal() {
+      document.getElementById('taskModal').classList.remove('show');
+    }
+
+    async function deleteTask(id) {
+      if (!confirm('Удалить задачу?')) return;
+
+      const res = await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        loadTasks();
+      } else {
+        alert('❌ Ошибка при удалении');
+      }
+    }
+
+    // === ЗАМЕТКИ ===
+    async function openNotes(id) {
+      currentTaskId = id;
+      await loadNotes();
+      document.getElementById('notesModal').classList.add('show');
+    }
+
+    function closeNotesModal() {
+      document.getElementById('notesModal').classList.remove('show');
+      currentTaskId = null;
+    }
+
+    async function loadNotes() {
+      const res = await fetch(`/api/tasks/${currentTaskId}/notes`);
+      const notes = await res.json();
+
+      const notesList = document.getElementById('notesList');
+      if (notes.length === 0) {
+        notesList.innerHTML = '<p style="color:#999;">Заметок пока нет</p>';
+        return;
+      }
+
+      notesList.innerHTML = notes.map(note => `
+        <div class="note-item">
+          <div class="note-header">
+            <span class="note-author">${note.user.username || note.user.Username}</span>
+            <span class="note-date">${new Date(note.created_at).toLocaleString('ru-RU')}</span>
+          </div>
+          <div class="note-content">${note.content}</div>
+        </div>
+      `).join('');
+    }
+
+    async function addNote() {
+      const content = document.getElementById('newNoteContent').value.trim();
+      if (!content) {
+        alert('⚠️ Введите текст заметки');
+        return;
+      }
+
+      const res = await fetch(`/api/tasks/${currentTaskId}/notes`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ content })
+      });
+
+      if (res.ok) {
+        document.getElementById('newNoteContent').value = '';
+        await loadNotes();
+        await loadTasks();
+      } else {
+        alert('❌ Ошибка при добавлении заметки');
+      }
+    }
+
+    // Обработка формы задачи
+    document.getElementById('taskForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      
+      const id = document.getElementById('taskId').value;
+      const data = {
+        title: document.getElementById('taskTitle').value,
+        description: document.getElementById('taskDescription').value,
+        status: document.getElementById('taskStatus').value
+      };
+
+      const url = id ? `/api/tasks/${id}` : '/api/tasks';
+      const method = id ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+      });
+
+      if (res.ok) {
+        closeModal();
+        loadTasks();
+      } else {
+        alert('❌ Ошибка при сохранении');
+      }
+    });
+
+    loadTasks();
+  </script>
+</body>
+</html>

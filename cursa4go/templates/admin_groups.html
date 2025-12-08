@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Группы пользователей</title>
+<style>
+body {
+  font-family: 'Segoe UI', sans-serif;
+  background: #f7f8fa;
+  padding: 20px;
+}
+.container {
+  max-width: 800px;
+  margin: auto;
+}
+h1 {
+  color: #667eea;
+}
+input, textarea {
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+button {
+  padding: 8px 16px;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+}
+button:hover {
+  background: #5a67d8;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+}
+th, td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+}
+th {
+  background: #f2f2f2;
+}
+a {
+  color: #667eea;
+  text-decoration: none;
+}
+.top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  gap: 10px;
+}
+.btn-secondary {
+  background: #6c757d;
+  padding: 8px 16px;
+  border-radius: 4px;
+  color: white;
+  text-decoration: none;
+  display: inline-block;
+}
+.btn-secondary:hover {
+  background: #5a6268;
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="top-bar">
+    <h1>🗂️ Группы пользователей</h1>
+    <div style="display: flex; gap: 10px;">
+      <a href="/admin/dashboard" class="btn-secondary">⬅ Дашборд</a>
+      <a href="/admin/users/page" class="btn-secondary">👥 Пользователи</a>
+      <form action="/logout" method="POST" style="display:inline;">
+        <button type="submit" class="btn-secondary">Выход</button>
+      </form>
+    </div>
+  </div>
+
+  <form id="createForm">
+    <input id="name" placeholder="Название группы" required>
+    <textarea id="description" placeholder="Описание (необязательно)" rows="3"></textarea>
+    <button type="submit">Создать группу</button>
+  </form>
+
+  <table id="groupsTable">
+    <thead>
+      <tr><th>ID</th><th>Название</th><th>Описание</th><th>Участников</th></tr>
+    </thead>
+    <tbody id="groupsBody">
+      <tr><td colspan="4" style="text-align:center;color:#666;">⏳ Загрузка...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+async function loadGroups() {
+  try {
+    const res = await fetch('/admin/groups');
+    if (!res.ok) throw new Error('Ошибка загрузки');
+    
+    const groups = await res.json();
+    const body = document.getElementById('groupsBody');
+    body.innerHTML = '';
+    
+    if (!groups || groups.length === 0) {
+      body.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#666;">📭 Групп пока нет</td></tr>';
+      return;
+    }
+    
+    groups.forEach(g => {
+      const tr = document.createElement('tr');
+      const id = g.id || g.ID;
+      const name = g.name || g.Name;
+      const desc = g.description || g.Description || '-';
+      const usersCount = g.Users ? g.Users.length : (g.users ? g.users.length : 0);
+      
+      tr.innerHTML = `
+        <td>${id}</td>
+        <td><a href="/admin/groups/${id}/page">🗂️ ${name}</a></td>
+        <td>${desc}</td>
+        <td>${usersCount}</td>
+      `;
+      body.appendChild(tr);
+    });
+  } catch (error) {
+    console.error('Error loading groups:', error);
+    document.getElementById('groupsBody').innerHTML = 
+      '<tr><td colspan="4" style="text-align:center;color:red;">❌ Ошибка загрузки групп</td></tr>';
+  }
+}
+
+document.getElementById('createForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  
+  const name = document.getElementById('name').value.trim();
+  const description = document.getElementById('description').value.trim();
+  
+  if (!name) {
+    alert('⚠️ Введите название группы');
+    return;
+  }
+  
+  try {
+    const res = await fetch('/admin/groups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description })
+    });
+    
+    if (res.ok) {
+      alert(`✅ Группа "${name}" создана`);
+      document.getElementById('createForm').reset();
+      loadGroups();
+    } else {
+      const data = await res.json();
+      alert('❌ ' + (data.error || 'Ошибка при создании'));
+    }
+  } catch (error) {
+    console.error('Error creating group:', error);
+    alert('❌ Ошибка при создании группы');
+  }
+});
+
+loadGroups();
+</script>
+</body>
+</html>
