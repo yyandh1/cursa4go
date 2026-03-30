@@ -30,3 +30,4 @@ COPY static ./static
 EXPOSE 5000
 
 CMD ["./main"]
+ #проверяю конкретно на этом файде
